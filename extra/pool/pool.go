@@ -10,9 +10,9 @@ import (
 // and if more connections are needed they will be created on demand. If a
 // connection is returned and the pool is full it will be closed.
 type Pool struct {
-	network string
-	addr    string
-	pool    chan *redis.Client
+	Network string
+	Addr    string
+	Pool    chan *redis.Client
 }
 
 // Creates a new Pool whose connections are all created using
@@ -27,12 +27,12 @@ func NewPool(network, addr string, size int) (*Pool, error) {
 		}
 	}
 	p := Pool{
-		network: network,
-		addr:    addr,
-		pool:    make(chan *redis.Client, len(pool)),
+		Network: network,
+		Addr:    addr,
+		Pool:    make(chan *redis.Client, len(pool)),
 	}
 	for i := range pool {
-		p.pool <- pool[i]
+		p.Pool <- pool[i]
 	}
 	return &p, nil
 }
@@ -45,9 +45,9 @@ func NewOrEmptyPool(network, addr string, size int) *Pool {
 	pool, err := NewPool(network, addr, size)
 	if err != nil {
 		pool = &Pool{
-			network: network,
-			addr:    addr,
-			pool:    make(chan *redis.Client, size),
+			Network: network,
+			Addr:    addr,
+			Pool:    make(chan *redis.Client, size),
 		}
 	}
 	return pool
@@ -57,10 +57,12 @@ func NewOrEmptyPool(network, addr string, size int) *Pool {
 // create a new one on the fly
 func (p *Pool) Get() (*redis.Client, error) {
 	select {
-	case conn := <-p.pool:
+	case conn := <-p.Pool:
 		return conn, nil
 	default:
-		return redis.Dial(p.network, p.addr)
+		conn, err := redis.Dial(p.Network, p.Addr)
+		p.CarefullyPut(conn, &err)
+		return conn, err
 	}
 }
 
@@ -70,20 +72,10 @@ func (p *Pool) Get() (*redis.Client, error) {
 // more connections as needed.
 func (p *Pool) Put(conn *redis.Client) {
 	select {
-	case p.pool <- conn:
+	case p.Pool <- conn:
 	default:
 		conn.Close()
 	}
-}
-
-// Gets a slice of all currently active redis connections.
-func (p *Pool) Connections() []*redis.Client {
-	output := []*redis.Client{}
-	for connection := range p.pool {
-		output = append(output, connection)
-	}
-
-	return output
 }
 
 // A useful helper method which acts as a wrapper around Put. It will only
@@ -128,7 +120,7 @@ func (p *Pool) Empty() {
 	var conn *redis.Client
 	for {
 		select {
-		case conn = <-p.pool:
+		case conn = <-p.Pool:
 			conn.Close()
 		default:
 			return
