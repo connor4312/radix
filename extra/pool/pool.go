@@ -76,6 +76,16 @@ func (p *Pool) Put(conn *redis.Client) {
 	}
 }
 
+// Gets a slice of all currently active redis connections.
+func (p *Pool) Connections() []*redis.Client {
+	output := []*redis.Client{}
+	for connection := range p.pool {
+		output = append(output, connection)
+	}
+
+	return output
+}
+
 // A useful helper method which acts as a wrapper around Put. It will only
 // actually Put the conn back if potentialErr is not an error or is a
 // redis.CmdError. It would be used like the following:
